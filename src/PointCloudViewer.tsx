@@ -1,4 +1,4 @@
-import type { BrotliDecompress } from "@voxelkloud/loader";
+import type { BrotliDecompress } from "@voxelkloud/format-potree";
 import { createPointCloudView } from "@voxelkloud/view";
 import type {
   ColorMode,
@@ -18,7 +18,7 @@ export interface PointCloudViewerProps {
   readonly url: string;
   readonly className?: string;
   readonly style?: CSSProperties;
-  /** LOD policy. `targetPixelSpacing` is the primary quality control. */
+  /** LOD policy. `targetScreenError` is the primary quality control. */
   readonly lod?: LodOptions;
   /**
    * Colour mode. Defaults to the cloud's own RGB when it has any, and to an
@@ -118,7 +118,7 @@ export function PointCloudViewer({
           return;
         }
         viewRef.current = view;
-        view.addCloud(cloud.source, cloud.hierarchy);
+        view.addCloud(cloud.source, cloud.hierarchy, cloud.openPoints);
         view.frameCloud(0);
 
         const resize = () => {
@@ -184,11 +184,15 @@ export function PointCloudViewer({
   }, [cloud, controls, sinkMode, edl === undefined]);
 
   // Idempotent setters, so changing a quality knob does not tear down the GPU.
+  // The deprecated alias is read here too, so a caller still passing
+  // `targetPixelSpacing` keeps a LIVE knob rather than one that only applies at
+  // mount. Resolution order matches `resolveLodOptions`.
+  const targetError = lod?.targetScreenError ?? lod?.targetPixelSpacing;
   useEffect(() => {
-    if (lod?.targetPixelSpacing !== undefined) {
-      viewRef.current?.setTargetPixelSpacing(lod.targetPixelSpacing);
+    if (targetError !== undefined) {
+      viewRef.current?.setTargetScreenError(targetError);
     }
-  }, [lod?.targetPixelSpacing]);
+  }, [targetError]);
 
   useEffect(() => {
     if (lod?.pointBudget !== undefined) {

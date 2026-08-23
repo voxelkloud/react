@@ -1,9 +1,14 @@
+// UNPINNED. These bindings used to force `format: "potree-v2"` because the
+// renderer decoded node payloads through that driver and nothing else would
+// have worked. `PointReader` removed that constraint, so the URL now decides:
+// whichever driver the application registered and the URL matches.
 import type {
-  BrotliDecompress,
-  PointCloudHierarchy,
-  PointCloudSource,
-} from "@voxelkloud/loader";
-import { loadHierarchy, loadPointCloudSource } from "@voxelkloud/loader";
+  NodeDecompress,
+  PointCloudSourceBase,
+  PointCloudTreeBase,
+  PointReaderFactory,
+} from "@voxelkloud/core";
+import { loadPointCloud } from "@voxelkloud/loader";
 import { useEffect, useRef, useState } from "react";
 
 /** What the loader is doing right now. */
@@ -12,8 +17,10 @@ export type PointCloudStatus =
   | { readonly kind: "loading"; readonly stage: "manifest" | "hierarchy" }
   | {
       readonly kind: "ready";
-      readonly source: PointCloudSource;
-      readonly hierarchy: PointCloudHierarchy;
+      readonly source: PointCloudSourceBase;
+      readonly hierarchy: PointCloudTreeBase;
+      /** Opens a reader for this cloud's node payloads. Pass it to `addCloud`. */
+      readonly openPoints: PointReaderFactory;
     }
   | { readonly kind: "error"; readonly error: unknown };
 
@@ -28,14 +35,15 @@ export interface UsePointCloudOptions {
    */
   readonly expandAll?: boolean;
   /**
-   * A brotli decompressor, needed for BROTLI clouds because no browser exposes
-   * one to JS. Ignored for uncompressed clouds.
+   * A whole-payload decompressor, needed for a BROTLI Potree cloud or a
+   * zstandard EPT one because no browser exposes either codec to JS. Ignored by
+   * a driver that needs none.
    *
    * ```ts
    * const { brotliDecompress } = await import("@voxelkloud/loader/brotli");
    * ```
    */
-  readonly decompress?: BrotliDecompress;
+  readonly decompress?: NodeDecompress;
 }
 
 /**
@@ -70,23 +78,28 @@ export function usePointCloud(
     (async () => {
       try {
         setStatus({ kind: "loading", stage: "manifest" });
-        const source = await loadPointCloudSource(url, {
+        // One call: identify the format, load the source AND open the tree.
+        // Splitting it would put the format switch back in this component —
+        // knowing which driver won is exactly what the registry removes.
+        const {
+          source,
+          tree: hierarchy,
+          openPoints,
+        } = await loadPointCloud(url, {
           signal: controller.signal,
+          ...(optionsRef.current.decompress !== undefined
+            ? { points: { decompress: optionsRef.current.decompress } }
+            : {}),
         });
         if (cancelled) return;
-
         setStatus({ kind: "loading", stage: "hierarchy" });
-        const hierarchy = await loadHierarchy(source, {
-          signal: controller.signal,
-        });
-        if (cancelled) return;
 
         if (optionsRef.current.expandAll !== false) await hierarchy.expandAll();
         if (cancelled) {
           hierarchy.dispose();
           return;
         }
-        setStatus({ kind: "ready", source, hierarchy });
+        setStatus({ kind: "ready", source, hierarchy, openPoints });
       } catch (error) {
         if (cancelled) return;
         setStatus({ kind: "error", error });
