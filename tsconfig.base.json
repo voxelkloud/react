@@ -1,0 +1,25 @@
+// Vendored from the development monorepo, deliberately.
+//
+// This package is cloned OUT of that workspace, so a CI checkout has no
+// parent directory to extend from: `extends: "../../tsconfig.base.json"`
+// resolves to nothing here and every build and test fails on it. Keeping the
+// copy makes the repo self-contained, at the cost of having to change it in
+// two places. tsconfig.json is JSONC, so this comment is legal.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true
+  }
+}
