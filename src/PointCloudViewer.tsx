@@ -10,12 +10,18 @@ import type {
 } from "@voxelkloud/view";
 import type { CSSProperties } from "react";
 import { useEffect, useRef, useState } from "react";
-import { usePointCloud } from "./use-point-cloud.js";
+import { usePointClouds } from "./use-point-cloud.js";
 import type { PointCloudStatus } from "./use-point-cloud.js";
 
 export interface PointCloudViewerProps {
-  /** Directory URL or `metadata.json` URL. Both are accepted. */
-  readonly url: string;
+  /**
+   * Directory URL or `metadata.json` URL. Both are accepted.
+   *
+   * An ARRAY opens several clouds into one view — the tiles of a survey, or two
+   * epochs of the same site. They share a scene origin (the first one's) and one
+   * camera, and the view frames the union rather than the first.
+   */
+  readonly url: string | readonly string[];
   readonly className?: string;
   readonly style?: CSSProperties;
   /** LOD policy. `targetScreenError` is the primary quality control. */
@@ -78,7 +84,10 @@ export function PointCloudViewer({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewRef = useRef<PointCloudView | undefined>(undefined);
   const [failure, setFailure] = useState<unknown>(undefined);
-  const cloud = usePointCloud(url, decompress === undefined ? {} : { decompress });
+  // Uma string é o caso de uma nuvem, que continua a ser a esmagadora maioria;
+  // a lista é o mesmo caminho com mais entradas, e não um segundo componente.
+  const urls = typeof url === "string" ? [url] : url;
+  const cloud = usePointClouds(urls, decompress === undefined ? {} : { decompress });
 
   // Callbacks through refs: a caller passing an inline arrow must not tear the
   // renderer down and rebuild it on every parent render.
@@ -97,8 +106,11 @@ export function PointCloudViewer({
 
     (async () => {
       try {
-        const hasColor = cloud.source.attributes.some(
-          (a) => a.role === "color",
+        // TODAS têm de ter cor para o modo RGB valer. O material é do VIEW e
+        // não da nuvem, logo um conjunto misto pintaria de preto as que não
+        // têm — a rampa de elevação é a escolha que serve as duas.
+        const hasColor = cloud.clouds.every((c) =>
+          c.source.attributes.some((a) => a.role === "color"),
         );
         view = createPointCloudView({
           canvas,
@@ -118,8 +130,8 @@ export function PointCloudViewer({
           return;
         }
         viewRef.current = view;
-        view.addCloud(cloud.source, cloud.hierarchy, cloud.openPoints);
-        view.frameCloud(0);
+        for (const c of cloud.clouds) view.addCloud(c.source, c.hierarchy, c.openPoints);
+        view.frameClouds();
 
         const resize = () => {
           const r = canvas.getBoundingClientRect();
@@ -144,7 +156,7 @@ export function PointCloudViewer({
             c.enableDamping = true;
             c.dampingFactor = 0.08;
             c.zoomToCursor = true;
-            c.target.copy(view.targetFor(0));
+            c.target.copy(view.targetForClouds());
             c.update();
             const prev = disposeControls;
             disposeControls = () => {
@@ -205,7 +217,20 @@ export function PointCloudViewer({
   }, [edl?.strength, edl?.radius, edl?.opacity]);
 
   const status: PointCloudStatus =
-    failure !== undefined ? { kind: "error", error: failure } : cloud;
+    failure !== undefined
+      ? { kind: "error", error: failure }
+      : // O overlay continua a receber a forma SINGULAR: quem o desenha olha
+        // para idle/loading/error, e mudar a assinatura por causa do plural
+        // partiria todos os chamadores por um campo que nenhum lê. Pronto com
+        // várias nuvens, entrega a primeira — a âncora da cena.
+        cloud.kind === "ready"
+        ? {
+            kind: "ready",
+            source: cloud.clouds[0]!.source,
+            hierarchy: cloud.clouds[0]!.hierarchy,
+            openPoints: cloud.clouds[0]!.openPoints,
+          }
+        : cloud;
 
   return (
     <div

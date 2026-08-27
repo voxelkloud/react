@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { usePointCloud } from "./use-point-cloud.js";
+import { usePointCloud, usePointClouds } from "./use-point-cloud.js";
 import { PointCloudViewer } from "./PointCloudViewer.js";
 
 /**
@@ -16,6 +16,7 @@ describe("@voxelkloud/react module contract", () => {
   it("imports with no DOM present", () => {
     expect(typeof globalThis.document).toBe("undefined");
     expect(typeof usePointCloud).toBe("function");
+    expect(typeof usePointClouds).toBe("function");
     expect(typeof PointCloudViewer).toBe("function");
   });
 
@@ -25,6 +26,7 @@ describe("@voxelkloud/react module contract", () => {
       "PointCloudViewer",
       "VOXELKLOUD_REACT_VERSION",
       "usePointCloud",
+      "usePointClouds",
     ]);
   });
 

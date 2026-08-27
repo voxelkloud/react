@@ -114,3 +114,94 @@ export function usePointCloud(
 
   return status;
 }
+
+/** What the loader is doing for a SET of clouds. */
+export type PointCloudsStatus =
+  | { readonly kind: "idle" }
+  | { readonly kind: "loading"; readonly stage: "manifest" | "hierarchy" }
+  | {
+      readonly kind: "ready";
+      /** One entry per URL, in the order given. */
+      readonly clouds: readonly {
+        readonly source: PointCloudSourceBase;
+        readonly hierarchy: PointCloudTreeBase;
+        readonly openPoints: PointReaderFactory;
+      }[];
+    }
+  | { readonly kind: "error"; readonly error: unknown };
+
+/**
+ * Load SEVERAL clouds, and report ready only when all of them are.
+ *
+ * All or nothing on purpose. A view that added clouds as each one landed would
+ * frame itself on the first to arrive and then jump when a neighbouring tile
+ * showed up behind the camera — and with survey tiles, "first to arrive" is
+ * whichever the CDN felt like, so the opening shot would differ between
+ * reloads. One barrier costs the slowest manifest and buys a stable first frame.
+ *
+ * The URLs are joined into the effect key rather than compared by identity, so
+ * a caller may pass a fresh array literal every render without re-loading.
+ */
+export function usePointClouds(
+  urls: readonly string[],
+  options: UsePointCloudOptions = {},
+): PointCloudsStatus {
+  const [status, setStatus] = useState<PointCloudsStatus>({ kind: "idle" });
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const key = urls.join("\n");
+
+  useEffect(() => {
+    const list = key === "" ? [] : key.split("\n");
+    if (list.length === 0) {
+      setStatus({ kind: "idle" });
+      return;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        setStatus({ kind: "loading", stage: "manifest" });
+        const loaded = await Promise.all(
+          list.map((u) =>
+            loadPointCloud(u, {
+              signal: controller.signal,
+              ...(optionsRef.current.decompress !== undefined
+                ? { points: { decompress: optionsRef.current.decompress } }
+                : {}),
+            }),
+          ),
+        );
+        if (cancelled) return;
+        setStatus({ kind: "loading", stage: "hierarchy" });
+        if (optionsRef.current.expandAll !== false)
+          await Promise.all(loaded.map((l) => l.tree.expandAll()));
+        if (cancelled) {
+          // Every tree, not just the ones that finished: `Promise.all` above
+          // resolves them all or none, so a cancel here leaks the whole set.
+          for (const l of loaded) l.tree.dispose();
+          return;
+        }
+        setStatus({
+          kind: "ready",
+          clouds: loaded.map((l) => ({
+            source: l.source,
+            hierarchy: l.tree,
+            openPoints: l.openPoints,
+          })),
+        });
+      } catch (error) {
+        if (cancelled) return;
+        setStatus({ kind: "error", error });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [key]);
+
+  return status;
+}

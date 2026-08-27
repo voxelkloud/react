@@ -7,9 +7,10 @@
 export { PointCloudViewer } from "./PointCloudViewer.js";
 export type { PointCloudViewerProps } from "./PointCloudViewer.js";
 
-export { usePointCloud } from "./use-point-cloud.js";
+export { usePointCloud, usePointClouds } from "./use-point-cloud.js";
 export type {
   PointCloudStatus,
+  PointCloudsStatus,
   UsePointCloudOptions,
 } from "./use-point-cloud.js";
 
