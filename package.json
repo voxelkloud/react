@@ -45,10 +45,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@voxelkloud/core": "^0.5.0",
-    "@voxelkloud/loader": "^0.5.0",
-    "@voxelkloud/view": "^0.6.0",
-    "@voxelkloud/format-potree": "^0.5.0"
+    "@voxelkloud/core": "workspace:^",
+    "@voxelkloud/loader": "workspace:^",
+    "@voxelkloud/view": "workspace:^",
+    "@voxelkloud/format-potree": "workspace:^"
   },
   "peerDependencies": {
     "react": "^19.0.0",
