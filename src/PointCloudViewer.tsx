@@ -6,6 +6,7 @@ import type {
   LodOptions,
   PointCloudView,
   PointMaterialOptions,
+  QualityLevel,
   ViewStats,
 } from "@voxelkloud/view";
 import type { CSSProperties } from "react";
@@ -45,6 +46,16 @@ export interface PointCloudViewerProps {
   readonly decompress?: BrotliDecompress;
   /** `"arena"` (default) batches nodes into slabs; `"per-node"` is the fallback. */
   readonly sinkMode?: "arena" | "per-node";
+  /**
+   * Automatic quality. `"auto"` by default when no `lod` is given.
+   *
+   * A LIVE prop, like `lod`: changing it moves the viewer without remounting,
+   * so a quality menu does not cost the user their camera and their streamed
+   * nodes every time they touch it.
+   */
+  readonly quality?: "auto" | QualityLevel["name"] | number | false;
+  /** Fires whenever the rung changes, including the first time it is set. */
+  readonly onQuality?: (level: QualityLevel, index: number, auto: boolean) => void;
   /** Attach `three/addons` OrbitControls. Default `true`. */
   readonly controls?: boolean;
   /** Called once per rendered frame with the LIVE stats object. */
@@ -75,8 +86,10 @@ export function PointCloudViewer({
   edl,
   decompress,
   sinkMode,
+  quality,
   controls = true,
   onStats,
+  onQuality,
   onReady,
   onError,
   renderOverlay,
@@ -91,8 +104,8 @@ export function PointCloudViewer({
 
   // Callbacks through refs: a caller passing an inline arrow must not tear the
   // renderer down and rebuild it on every parent render.
-  const cbs = useRef({ onStats, onReady, onError });
-  cbs.current = { onStats, onReady, onError };
+  const cbs = useRef({ onStats, onReady, onError, onQuality });
+  cbs.current = { onStats, onReady, onError, onQuality };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -117,7 +130,13 @@ export function PointCloudViewer({
           ...(lod !== undefined ? { lod } : {}),
           ...(decompress !== undefined ? { decompress } : {}),
           ...(sinkMode !== undefined ? { sinkMode } : {}),
+          ...(quality !== undefined ? { quality } : {}),
           ...(edl !== undefined ? { edl } : {}),
+          // Through the ref, so a host that re-renders on every stat does not
+          // rebuild the view: the option is read once at construction and the
+          // ref is always current by then.
+          onQualityChange: (level, index, auto) =>
+            cbs.current.onQuality?.(level, index, auto),
           material: {
             ...(hasColor ? {} : { colorMode: { kind: "elevation" as const } }),
             ...(colorMode !== undefined ? { colorMode } : {}),
@@ -215,6 +234,15 @@ export function PointCloudViewer({
   useEffect(() => {
     if (edl !== undefined) viewRef.current?.setEdl(edl);
   }, [edl?.strength, edl?.radius, edl?.opacity]);
+
+  // `false` is not a value the view can be SET to — turning the ladder off
+  // once it is running just means nobody moves it again — so it is honoured at
+  // construction and ignored here.
+  useEffect(() => {
+    if (quality !== undefined && quality !== false) {
+      viewRef.current?.setQuality(quality);
+    }
+  }, [quality]);
 
   const status: PointCloudStatus =
     failure !== undefined
